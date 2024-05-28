@@ -37,11 +37,11 @@ def sanitize_filename(file_name: str) -> str:
     '''
     Clean the post text.
     '''
-    file_name = re.sub('\s', '_', file_name)
-    file_name = re.sub('[^\w\d_.-]', '', file_name)
-    file_name = re.sub('_+', '_', file_name)
-    file_name = re.sub('\.+', '.', file_name)
-    file_name = re.sub('(_\.|\._)', '.', file_name)
+    file_name = re.sub(r'\s', '_', file_name)
+    file_name = re.sub(r'[^\w\d_.-]', '', file_name)
+    file_name = re.sub(r'_+', '_', file_name)
+    file_name = re.sub(r'\.+', '.', file_name)
+    file_name = re.sub(r'(_\.|\._)', '.', file_name)
     return file_name.lower()
 
 
