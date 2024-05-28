@@ -64,7 +64,7 @@ def configure_clients(args: argparse.Namespace) -> list[OnlyFansScraper]:
         clients.append(OnlyFansScraper(
             section,
             session=session,
-            header_rules=get_header_rules(),
+            header_rules=get_header_rules(session),
             cookie=config[section].get('cookie', ''),
             user_agent=config[section].get('user_agent', ''),
             x_bc=config[section].get('x_bc', ''.join(random.choice(string.digits + string.ascii_lowercase) for _ in range(40))),

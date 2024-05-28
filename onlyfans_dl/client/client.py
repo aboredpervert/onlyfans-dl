@@ -48,11 +48,10 @@ def sanitize_filename(file_name: str) -> str:
     return file_name.lower()
 
 
-def get_header_rules(url: str = 'https://raw.githubusercontent.com/DATAHOARDERS/dynamic-rules/main/onlyfans.json') -> HeaderRules:
-    response = requests.get(url)
-    response.raise_for_status()
-    header_rules: HeaderRules = msgspec.json.decode(response.content, type=HeaderRules)
-    return header_rules
+def get_header_rules(session: requests.Session, url: str = 'https://raw.githubusercontent.com/deviint/onlyfans-dynamic-rules/main/dynamicRules.json') -> HeaderRules:
+    with session.get(url) as response:
+        response.raise_for_status()
+        return msgspec.json.decode(response.content, type=HeaderRules)
 
 
 class ScrapingException(Exception):
