@@ -49,7 +49,8 @@ def build_config(config_file: pathlib.Path) -> configparser.ConfigParser:
 
 
 def configure_clients(args: argparse.Namespace) -> list[OnlyFansScraper]:
-    config = build_config(args.config)
+    config_path: pathlib.Path = args.config
+    config = build_config(config_path)
     clients = []
     for section in config:
         if section == 'DEFAULT':
@@ -137,14 +138,17 @@ def main() -> None:
     args = parse_args()
     clients = configure_clients(args)
 
-    if args.run_forever:
+    run_forever: bool = args.run_forever
+    args_users: list[str] = args.users
+
+    if run_forever:
         iteration = 0
         while True:
             iteration += 1
             logger.info('Starting iteration %d', iteration)
             for client in clients:
-                if args.users:
-                    users = [client.get_user_details(user) for user in args.users]
+                if args_users:
+                    users = [client.get_user_details(user) for user in args_users]
                 else:
                     try:
                         users = client.get_subscriptions()
@@ -162,8 +166,8 @@ def main() -> None:
             time.sleep(5)
     else:
         for client in clients:
-            if args.users:
-                users = chats = [client.get_user_details(user) for user in args.users]
+            if args_users:
+                users = chats = [client.get_user_details(user) for user in args_users]
             else:
                 try:
                     users = client.get_subscriptions()
