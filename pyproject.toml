@@ -15,7 +15,10 @@ mypy = "^1.10.0"
 types-requests = "^2.32.0"
 
 [tool.mypy]
-ignore_missing_imports = true
+python_version = "3.12"
+show_error_codes = true
+show_absolute_path = true
+files = ["onlyfans_dl"]
 strict = true
 
 [build-system]
