@@ -12,8 +12,8 @@ import platformdirs
 import requests
 from requests.adapters import HTTPAdapter, Retry
 
-from onlyfans_dl.client import OnlyFansScraper, ScrapingException, get_header_rules
-from onlyfans_dl.client.structs import NormalizedMedia, User
+from .client import OnlyFansScraper, ScrapingException, get_header_rules
+from .client.structs import NormalizedMedia, User
 
 
 logger = logging.getLogger()

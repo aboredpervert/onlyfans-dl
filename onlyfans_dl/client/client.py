@@ -17,7 +17,7 @@ import urllib.parse
 import msgspec
 import requests
 
-from onlyfans_dl.client.structs import (
+from .structs import (
     Chats,
     HeaderRules,
     HighlightCategory,
