@@ -523,7 +523,6 @@ class OnlyFansScraper:
                         cur.execute('INSERT INTO media VALUES (?, ?, ?, ?)', ('avatar', timestamp, timestamp, timestamp))
                 except requests.RequestException:
                     LOGGER.exception('error getting avatar')
-                    exit(1)
 
             if user.header:
                 try:
@@ -543,7 +542,6 @@ class OnlyFansScraper:
                         cur.execute('INSERT INTO media VALUES (?, ?, ?, ?)', ('header', timestamp, timestamp, timestamp))
                 except requests.RequestException:
                     LOGGER.exception('error getting header')
-                    exit(1)
 
             for media in medias:
                 if cur.execute('SELECT * FROM media WHERE source_type = ? AND source_id = ? AND media_id = ?', (media.source_type, media.source_id, media.id)).fetchone():
@@ -583,6 +581,5 @@ class OnlyFansScraper:
                     cur.execute('INSERT INTO media VALUES (?, ?, ?, ?)', (media.source_type, int(creation_date.timestamp()), media.source_id, media.id))
                 except requests.RequestException:
                     LOGGER.exception('error getting media')
-                    exit(1)
             database.commit()
         LOGGER.info('finished downloading media for %s', user.username)
