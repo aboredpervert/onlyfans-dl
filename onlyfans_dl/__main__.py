@@ -157,33 +157,14 @@ def main() -> None:
     run_forever: bool = args.run_forever
     args_users: list[str] = args.users
 
-    if run_forever:
-        iteration = 0
-        while True:
-            iteration += 1
+    iteration = 0
+    while True:
+        iteration += 1
+        if run_forever:
             logger.info('Starting iteration %d', iteration)
-            for client in clients:
-                if args_users:
-                    users = [client.get_user_details(user) for user in args_users]
-                else:
-                    try:
-                        users = client.get_subscriptions()
-                        logger.info('got %d subscriptions with scraper %s', len(users), client.name)
-
-                        chats = client.get_chats()
-                        logger.info('got %d chats with scraper %s', len(chats), client.name)
-                    except ScrapingException as e:
-                        if status_code := get_status_code(e):
-                            logger.error('failed to get subscriptions for scraper %s - status code %s', client.name, status_code)
-                        else:
-                            logger.error('failed to get subscriptions for scraper %s', client.name)
-                        continue
-                download(client, users=client.get_subscriptions(), chats=client.get_chats())
-            time.sleep(5)
-    else:
         for client in clients:
             if args_users:
-                users = chats = [client.get_user_details(user) for user in args_users]
+                users = [client.get_user_details(user) for user in args_users]
             else:
                 try:
                     users = client.get_subscriptions()
@@ -198,6 +179,9 @@ def main() -> None:
                         logger.error('failed to get subscriptions for scraper %s', client.name)
                     continue
             download(client, users=users, chats=chats)
+            if not run_forever:
+                break
+        time.sleep(5)
 
 
 if __name__ == '__main__':
