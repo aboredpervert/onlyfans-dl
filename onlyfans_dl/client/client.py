@@ -1,13 +1,16 @@
+from collections import defaultdict
 import contextlib
 from datetime import datetime
 import functools
 import hashlib
 import logging
 from operator import itemgetter
+import os
 import pathlib
 import re
 import secrets
 import sqlite3
+import string
 import time
 import urllib.parse
 
@@ -67,7 +70,7 @@ class OnlyFansScraper:
         user_agent: str = '',
         x_bc: str,
         download_root: str = 'downloads',
-        download_template: str,
+        download_template: str = '{date:%Y-%m-%d}.{media_id}.{text:.35}.{extension}',
         skip_temporary: bool = False,
     ):
         self.session = session
@@ -78,7 +81,7 @@ class OnlyFansScraper:
         self.user_agent = user_agent
         self.x_bc = x_bc
 
-        self.download_root = pathlib.Path(download_root)
+        self.download_root = pathlib.Path(os.path.normpath(os.path.abspath(download_root)))
         self.download_template = download_template
         self.skip_temporary = skip_temporary
 
@@ -543,7 +546,8 @@ class OnlyFansScraper:
                 except requests.RequestException:
                     LOGGER.exception('error getting header')
 
-            for media in medias:
+            formatter = string.Formatter()
+            for index, media in enumerate(medias):
                 if cur.execute('SELECT * FROM media WHERE source_type = ? AND source_id = ? AND media_id = ?', (media.source_type, media.source_id, media.id)).fetchone():
                     continue
                 creation_date = datetime.strptime(media.created_at, '%Y-%m-%dT%H:%M:%S%z')
@@ -560,11 +564,21 @@ class OnlyFansScraper:
                         LOGGER.info(f'unknown media type: {media.file_type}')
                         continue
 
+                fields: dict[str, object] = defaultdict(lambda: '')
+                fields.update({
+                    'date': creation_date,
+                    'post_id': media.source_id,
+                    'media_id': media.id,
+                    'index': index,
+                    'text': media.text,
+                    'extension': ext
+                })
+
                 dest_file = pathlib.Path(
                     user_dir,
                     media.source_type,
                     media.file_type + 's',
-                    sanitize_filename(f'{creation_date.strftime("%Y-%m-%d")}.{media.id}.{media.text[:35]}.{ext}'),
+                    sanitize_filename(formatter.vformat(self.download_template, (), fields)),
                 )
                 dest_file.parent.mkdir(parents=True, exist_ok=True)
                 temp_file = pathlib.Path(dest_file.parent, f'{dest_file.name}.{secrets.token_urlsafe(6)}.part')
