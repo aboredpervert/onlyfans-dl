@@ -14,6 +14,9 @@ platformdirs = "^4.2.2"
 mypy = "^1.10.0"
 types-requests = "^2.32.0"
 
+[tool.poetry.scripts]
+onlyfans_dl = "onlyfans_dl.__main__:main"
+
 [tool.mypy]
 python_version = "3.12"
 show_error_codes = true

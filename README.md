@@ -3,9 +3,8 @@
 ## Setup
 
 1. Clone the repo
-2. Run `poetry shell`
-3. Run `poetry install`
-4. Run `python -m onlyfans_dl`
+2. Run `poetry install`
+3. Run `poetry run onlyfans_dl`
 
 On initial startup, you will be asked for the `cookie`, `user_agent`, and `x_bc` values.
 After inputting, you will be asked if you would like to begin scraping.
