@@ -75,6 +75,11 @@ def configure_clients(args: argparse.Namespace) -> list[OnlyFansScraper]:
 
 
 def download(client: OnlyFansScraper, *, users: list[User] | None, chats: list[User] | None) -> None:
+    if users is None:
+        users = []
+    if chats is None:
+        chats = []
+
     user_medias: dict[User, list[NormalizedMedia]] = {}
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
@@ -134,6 +139,17 @@ def download(client: OnlyFansScraper, *, users: list[User] | None, chats: list[U
             pass
 
 
+def get_status_code(exception: Exception) -> int | None:
+    if not isinstance(exception.__context__, requests.RequestException):
+        return None
+
+    response = exception.__context__.response
+    if response is None:
+        return None
+
+    return response.status_code
+
+
 def main() -> None:
     args = parse_args()
     clients = configure_clients(args)
@@ -157,8 +173,8 @@ def main() -> None:
                         chats = client.get_chats()
                         logger.info('got %d chats with scraper %s', len(chats), client.name)
                     except ScrapingException as e:
-                        if request_exception := e.__context__ if isinstance(e.__context__, requests.RequestException) else None:
-                            logger.error('failed to get subscriptions for scraper %s - status code %s', client.name, request_exception.response.status_code)
+                        if status_code := get_status_code(e):
+                            logger.error('failed to get subscriptions for scraper %s - status code %s', client.name, status_code)
                         else:
                             logger.error('failed to get subscriptions for scraper %s', client.name)
                         continue
@@ -176,8 +192,8 @@ def main() -> None:
                     chats = client.get_chats()
                     logger.info('got %d chats with scraper %s', len(chats), client.name)
                 except ScrapingException as e:
-                    if request_exception := e.__context__ if isinstance(e.__context__, requests.RequestException) else None:
-                        logger.error('failed to get subscriptions for scraper %s - status code %s', client.name, request_exception.response.status_code)
+                    if status_code := get_status_code(e):
+                        logger.error('failed to get subscriptions for scraper %s - status code %s', client.name, status_code)
                     else:
                         logger.error('failed to get subscriptions for scraper %s', client.name)
                     continue

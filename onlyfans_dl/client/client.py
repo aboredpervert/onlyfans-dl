@@ -197,7 +197,10 @@ class OnlyFansScraper:
                 response = self.send_get_request(url.format(offset=offset))
                 users = self.users_decoder.decode(response.content)
             except requests.RequestException as e:
-                raise ScrapingException(f'failed to retrieve subscriptions with scraper "{self.name}" at offset {offset} - status {e.response.status_code}')
+                if e.response is None:
+                    raise ScrapingException(f'failed to retrieve subscriptions with scraper "{self.name}" at offset {offset}')
+                else:
+                    raise ScrapingException(f'failed to retrieve subscriptions with scraper "{self.name}" at offset {offset} - status {e.response.status_code}')
             except msgspec.DecodeError:
                 LOGGER.debug('get_subscriptions() response.content: %s', response.content)
                 raise ScrapingException(f'failed to deserialize subscriptions with scraper "{self.name}" at offset {offset}')
