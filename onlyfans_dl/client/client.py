@@ -58,7 +58,7 @@ class ScrapingException(Exception):
 
 class OnlyFansScraper:
     def __init__(self,
-        name: str = __qualname__,  # type: ignore[name-defined]
+        name: str = __qualname__,
         *,
         session: requests.Session,
         request_timeout: int = 10,
