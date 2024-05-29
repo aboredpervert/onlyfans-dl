@@ -12,6 +12,7 @@ import secrets
 import sqlite3
 import string
 import time
+import typing
 import urllib.parse
 
 import msgspec
@@ -107,7 +108,7 @@ class OnlyFansScraper:
     def __str__(self) -> str:
         return f'{self.name}\ncookie: {self.cookie}\nuser-agent: {self.user_agent}\nx-bc: {self.x_bc}'
 
-    def generate_headers(self, url: str) -> dict[str, str]:
+    def generate_headers(self, url: str, timer: typing.Callable[[], float] = time.time) -> dict[str, str]:
         '''Generates required headers for a request to the OnlyFans API.
 
         Args:
@@ -129,12 +130,12 @@ class OnlyFansScraper:
         # Only `time` and `sign` need to be generated for each request.
         # `x_bc` is a random 40-character string that can persist between requests.
         # https://github.com/DIGITALCRIMINALS/OnlyFans/blob/85aec02065f6065c5b99b6caedec20ce947ffc2d/apis/api_helper.py#L348-L373
-        current_seconds = str(int(time.time()))
+        current_seconds = str(int(timer()))
         digest_hex = hashlib.sha1('\n'.join([self.header_rules.static_param, current_seconds, url_path, '0']).encode('utf-8')).hexdigest()
         headers = {
             'accept': 'application/json, text/plain, */*',
             'app-token': self.header_rules.app_token,
-            'sign': self.header_rules.format.format(digest_hex, abs(sum([digest_hex.encode('ascii')[num] for num in self.header_rules.checksum_indexes]) + self.header_rules.checksum_constant)),
+            'sign': self.header_rules.format.format(digest_hex, abs(sum(ord(digest_hex[num]) for num in self.header_rules.checksum_indexes) + self.header_rules.checksum_constant)),
             'time': current_seconds,
             'x-bc': self.x_bc,
         }
