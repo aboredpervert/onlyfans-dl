@@ -2,7 +2,6 @@ from msgspec import Struct
 
 
 class HeaderRules(Struct, kw_only=True):
-
     static_param: str
     format: str
     checksum_indexes: list[int]
@@ -10,23 +9,23 @@ class HeaderRules(Struct, kw_only=True):
     app_token: str
 
 
-class User(Struct, kw_only=True):
-
-    """Useful attributes from the OnlyFans API. Inherits `msgspec.Struct`."""
-
+class UserRef(Struct, kw_only=True):
     id: int
-    username: str | None
-    name: str | None
-    avatar: str | None
-    header: str | None
 
     def __hash__(self) -> int:
         return hash(self.id)
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, User):
+        if not isinstance(other, UserRef):
             return NotImplemented
         return self.id == other.id
+
+
+class User(UserRef, kw_only=True):
+    username: str
+    name: str
+    avatar: str | None
+    header: str | None
 
 
 class Post(Struct, kw_only=True, rename='camel'):
@@ -53,7 +52,7 @@ class Post(Struct, kw_only=True, rename='camel'):
     # In the event of a reported post, all of these will not be included in the
     # response, so they are defaulted to `None`.
     expired_at: str | None = None
-    author: User | None = None
+    author: UserRef | None = None
     raw_text: str | None = None
     price: int | float | None = None
     is_archived: bool | None = None
@@ -75,7 +74,7 @@ class Chats(Struct, kw_only=True, rename={'has_more': 'hasMore', 'next_offset': 
 
     class Chat(Struct, kw_only=True, rename='camel'):
 
-        with_user: User
+        with_user: UserRef
 
     chats: list[Chat]
     has_more: bool
@@ -106,7 +105,7 @@ class Message(Struct, kw_only=True, rename='camel'):
     price: int | float
     media: list[Media]
     previews: list[int]
-    from_user: User
+    from_user: UserRef
     id: int
     created_at: str
 
