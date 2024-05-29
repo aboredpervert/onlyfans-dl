@@ -101,6 +101,9 @@ class OnlyFansScraper:
         self.highlight_decoder = msgspec.json.Decoder(Highlight)
         self.stories_decoder = msgspec.json.Decoder(list[Story])
 
+    def close(self) -> None:
+        self.session.close()
+
     def __str__(self) -> str:
         return f'{self.name}\ncookie: {self.cookie}\nuser-agent: {self.user_agent}\nx-bc: {self.x_bc}'
 

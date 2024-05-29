@@ -1,5 +1,6 @@
 import argparse
 import concurrent.futures
+import contextlib
 import logging
 import os
 import pathlib
@@ -28,7 +29,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def configure_clients(args: argparse.Namespace) -> list[OnlyFansScraper]:
+def configure_clients(args: argparse.Namespace, stack: contextlib.ExitStack | None = None) -> list[OnlyFansScraper]:
     config_path: pathlib.Path = args.config
     config = build_config(config_path)
     clients = []
@@ -45,7 +46,7 @@ def configure_clients(args: argparse.Namespace) -> list[OnlyFansScraper]:
             session.proxies = { 'all': scraper.proxy }
             session.trust_env = False
 
-        clients.append(OnlyFansScraper(
+        client = OnlyFansScraper(
             scraper_name,
             session=session,
             header_rules=get_header_rules(session, scraper.rules),
@@ -55,7 +56,12 @@ def configure_clients(args: argparse.Namespace) -> list[OnlyFansScraper]:
             download_root=scraper.download_root,
             download_template=scraper.download_template,
             skip_temporary=scraper.skip_temporary,
-        ))
+        )
+
+        clients.append(client)
+        if stack is not None:
+            stack.callback(client.close)
+
     return clients
 
 
@@ -138,36 +144,37 @@ def get_status_code(exception: Exception) -> int | None:
 def main() -> None:
     setup_logging()
     args = parse_args()
-    clients = configure_clients(args)
 
     run_forever: bool = args.run_forever
     args_users: list[str] = args.users
 
-    iteration = 0
-    while True:
-        iteration += 1
-        if run_forever:
-            LOGGER.info('Starting iteration %d', iteration)
-        for client in clients:
-            if args_users:
-                users = [client.get_user_details(user) for user in args_users]
-            else:
-                try:
-                    users = client.get_subscriptions()
-                    LOGGER.info('got %d subscriptions with scraper %s', len(users), client.name)
+    with contextlib.ExitStack() as stack:
+        clients = configure_clients(args, stack)
+        iteration = 0
+        while True:
+            iteration += 1
+            if run_forever:
+                LOGGER.info('Starting iteration %d', iteration)
+            for client in clients:
+                if args_users:
+                    users = [client.get_user_details(user) for user in args_users]
+                else:
+                    try:
+                        users = client.get_subscriptions()
+                        LOGGER.info('got %d subscriptions with scraper %s', len(users), client.name)
 
-                    chats = client.get_chats()
-                    LOGGER.info('got %d chats with scraper %s', len(chats), client.name)
-                except ScrapingException as e:
-                    if status_code := get_status_code(e):
-                        LOGGER.error('failed to get subscriptions for scraper %s - status code %s', client.name, status_code)
-                    else:
-                        LOGGER.error('failed to get subscriptions for scraper %s', client.name)
-                    continue
-            download(client, users=users, chats=chats)
-            if not run_forever:
-                break
-        time.sleep(5)
+                        chats = client.get_chats()
+                        LOGGER.info('got %d chats with scraper %s', len(chats), client.name)
+                    except ScrapingException as e:
+                        if status_code := get_status_code(e):
+                            LOGGER.error('failed to get subscriptions for scraper %s - status code %s', client.name, status_code)
+                        else:
+                            LOGGER.error('failed to get subscriptions for scraper %s', client.name)
+                        continue
+                download(client, users=users, chats=chats)
+                if not run_forever:
+                    break
+            time.sleep(5)
 
 
 if __name__ == '__main__':
