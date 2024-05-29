@@ -1,4 +1,4 @@
-from msgspec import Struct
+from msgspec import Struct, UnsetType, UNSET, field
 
 
 class HeaderRules(Struct, kw_only=True):
@@ -29,16 +29,12 @@ class User(UserRef, kw_only=True):
 
 
 class Post(Struct, kw_only=True, rename='camel'):
-
-    """Useful attributes from the OnlyFans API. Inherits `msgspec.Struct`."""
-
     class Media(Struct, kw_only=True, rename='camel'):
-
         class Source(Struct, kw_only=True):
-
             source: str | None
             width: int
             height: int
+            size: int
             duration: int
 
         id: int
@@ -47,17 +43,16 @@ class Post(Struct, kw_only=True, rename='camel'):
         source: Source
 
     id: int
+    author: UserRef | UnsetType = UNSET # unset if reported
     posted_at: str
     posted_at_precise: str
-    # In the event of a reported post, all of these will not be included in the
-    # response, so they are defaulted to `None`.
-    expired_at: str | None = None
-    author: UserRef | None = None
-    raw_text: str | None = None
-    price: int | float | None = None
-    is_archived: bool | None = None
-    media: list[Media] | None = None
-    preview: list[int | str] | None = None
+    expired_at: str | UnsetType = UNSET # unset if there is no expiry
+    is_pinned: bool = False
+    is_archived: bool = False
+    raw_text: str | UnsetType = UNSET # unset if reported
+    price: float | UnsetType = UNSET # unset if free
+    media: list[Media] = field(default_factory=list)
+    preview: list[int] = field(default_factory=list)
 
 
 class Posts(Struct, kw_only=True, rename={'has_more': 'hasMore', 'posts': 'list'}.get):
@@ -191,61 +186,60 @@ class NormalizedMedia(Struct, kw_only=True):
     height: int
     duration: int
     url: str
-    expired_at: str | None = None
     value: str = 'free'
     highlight_category: str | None = None
 
 
 def normalize_post_media(post: Post, skip_temporary: bool = False) -> list[NormalizedMedia]:
     nm: list[NormalizedMedia] = []
-    if not post.media or (post.expired_at and skip_temporary):
+    if post.author is UNSET or not post.media or \
+        (post.expired_at is not UNSET and skip_temporary):
         return nm
-    else:
-        for media in post.media:
-            if not media.can_view:
-                continue
-            nm.append(
-                NormalizedMedia(
-                    user_id=post.author.id,
-                    source_type='posts',
-                    source_id=post.id,
-                    id=media.id,
-                    file_type=media.type,
-                    created_at=post.posted_at,
-                    value='paid' if post.price else 'free',
-                    text=post.raw_text,
-                    width=media.source.width,
-                    height=media.source.height,
-                    duration=media.source.duration,
-                    url=media.source.source,
-                ),
-            )
+    for media in post.media:
+        if not media.can_view:
+            continue
+        nm.append(
+            NormalizedMedia(
+                user_id=post.author.id,
+                source_type='posts',
+                source_id=post.id,
+                id=media.id,
+                file_type=media.type,
+                created_at=post.posted_at,
+                value='paid' if post.price else 'free',
+                text='' if post.raw_text is UNSET else post.raw_text,
+                width=media.source.width,
+                height=media.source.height,
+                duration=media.source.duration,
+                url=media.source.source,
+            ),
+        )
     return nm
 
 def normalize_archived_post_media(post: Post, skip_temporary: bool = False) -> list[NormalizedMedia]:
     nm: list[NormalizedMedia] = []
-    if not post.media or (post.expired_at and skip_temporary):
+    if post.author is UNSET or not post.media or \
+        (post.expired_at is not UNSET and skip_temporary):
         return nm
-    else:
-        for media in post.media:
-            if not media.can_view:
-                continue
-            nm.append(
-                NormalizedMedia(
-                    user_id=post.author.id,
-                    source_type='archived',
-                    source_id=post.id,
-                    id=media.id,
-                    file_type=media.type,
-                    created_at=post.posted_at,
-                    value='paid' if post.price and media.id not in post.preview else 'free',
-                    text=post.raw_text,
-                    width=media.source.width,
-                    height=media.source.height,
-                    duration=media.source.duration,
-                    url=media.source.source
-                ),
-            )
+    for media in post.media:
+        if not media.can_view:
+            continue
+        nm.append(
+            NormalizedMedia(
+                user_id=post.author.id,
+                source_type='archived',
+                source_id=post.id,
+                id=media.id,
+                file_type=media.type,
+                created_at=post.posted_at,
+                value='paid' if post.price and media.id not in post.preview else 'free',
+                text='' if post.raw_text is UNSET else post.raw_text,
+                width=media.source.width,
+                height=media.source.height,
+                duration=media.source.duration,
+                url=media.source.source
+            ),
+        )
     return nm
 
 def normalize_message_media(message: Message) -> list[NormalizedMedia]:
