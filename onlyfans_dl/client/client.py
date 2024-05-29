@@ -108,6 +108,15 @@ class OnlyFansScraper:
     def __str__(self) -> str:
         return f'{self.name}\ncookie: {self.cookie}\nuser-agent: {self.user_agent}\nx-bc: {self.x_bc}'
 
+    @classmethod
+    def generate_url(cls, *args: str | int | float, **kwargs: str | int | float) -> str:
+        scheme = 'https'
+        netloc = 'onlyfans.com'
+        path = '/' + '/'.join(urllib.parse.quote(str(x), safe='') for x in args)
+        query = urllib.parse.urlencode({k: str(v) for k, v in kwargs.items()})
+        fragment = ''
+        return urllib.parse.urlunsplit((scheme, netloc, path, query, fragment))
+
     def generate_headers(self, url: str, timer: typing.Callable[[], float] = time.time) -> dict[str, str]:
         '''Generates required headers for a request to the OnlyFans API.
 
@@ -123,8 +132,8 @@ class OnlyFansScraper:
         if self.header_rules is None:
             raise ScrapingException('client not initialized with header rules')
 
-        parsed_url = urllib.parse.urlparse(url)
-        url_path = f'{parsed_url.path}?{parsed_url.query}' if parsed_url.query else parsed_url.path
+        split_url = urllib.parse.urlsplit(url)
+        url_path = f'{split_url.path}?{split_url.query}' if split_url.query else split_url.path
 
         # DC's logic for generating the headers.
         # Only `time` and `sign` need to be generated for each request.
@@ -178,7 +187,7 @@ class OnlyFansScraper:
         Raises:
             `ScrapingException`: An error occurred while retrieving or deserializing the user's details.
         '''
-        url = f'https://onlyfans.com/api2/v2/users/{user}'
+        url = self.generate_url('api2', 'v2', 'users', user)
         try:
             response = self.send_get_request(url)
             return self.user_decoder.decode(response.content)
@@ -199,11 +208,11 @@ class OnlyFansScraper:
         '''
         subscriptions: list[User] = []
 
-        url = 'https://onlyfans.com/api2/v2/subscriptions/subscribes?limit=10&offset={offset}&type=active&sort=desc'
         offset = 0
         while True:
+            url = self.generate_url('api2', 'v2', 'subscriptions', 'subscribes', limit=10, offset=offset, type='active', sort='desc')
             try:
-                response = self.send_get_request(url.format(offset=offset))
+                response = self.send_get_request(url)
                 users = self.users_decoder.decode(response.content)
             except requests.RequestException as e:
                 if e.response is None:
@@ -245,11 +254,11 @@ class OnlyFansScraper:
             except sqlite3.OperationalError:
                 pass
 
-        url = 'https://onlyfans.com/api2/v2/users/{user_id}/posts?limit=10&offset={offset}&order=publish_date_desc'
         offset = 0
         while True:
+            url = self.generate_url('api2', 'v2', 'users', user_id, 'posts', limit=10, offset=offset, order='publish_date_desc')
             try:
-                response = self.send_get_request(url.format(user_id=user_id, offset=offset))
+                response = self.send_get_request(url)
                 decoded_posts = self.posts_decoder.decode(response.content)
             except requests.RequestException:
                 raise ScrapingException(f'failed to retrieve posts for user {user_id} at offset {offset} with scraper "{self.name}"')
@@ -295,11 +304,12 @@ class OnlyFansScraper:
             except sqlite3.OperationalError:
                 pass
 
-        url = 'https://onlyfans.com/api2/v2/users/{user_id}/posts/archived?limit=10&offset={offset}&order=publish_date_desc'
+
         offset = 0
         while True:
+            url = self.generate_url('api2', 'v2', 'users', user_id, 'posts', 'archived', limit=10, offset=offset, order='publish_date_desc')
             try:
-                response = self.send_get_request(url.format(user_id=user_id, offset=offset))
+                response = self.send_get_request(url)
                 decoded_posts = self.posts_decoder.decode(response.content)
             except requests.RequestException:
                 raise ScrapingException(f'failed to retrieve archived posts for user {user_id} at offset {offset} with scraper "{self.name}"')
@@ -333,11 +343,11 @@ class OnlyFansScraper:
         '''
         chats: list[User] = []
 
-        url = 'https://onlyfans.com/api2/v2/chats?offset={offset}'
         offset = 0
         while True:
+            url = self.generate_url('api2', 'v2', 'chats', offset=offset)
             try:
-                response = self.send_get_request(url.format(offset=offset))
+                response = self.send_get_request(url)
                 decoded_chats = self.chats_decoder.decode(response.content)
             except requests.RequestException:
                 raise ScrapingException(f'failed to retrieve chats with scraper "{self.name}" at offset {offset}')
@@ -374,11 +384,11 @@ class OnlyFansScraper:
             except sqlite3.OperationalError:
                 pass
 
-        url = 'https://onlyfans.com/api2/v2/chats/{user_id}/messages?limit=10&offset={offset}&order=desc'
         offset = 0
         while True:
+            url = self.generate_url('api2', 'v2', 'chats', user_id, 'messages', limit=10, offset=offset, order='desc')
             try:
-                response = self.send_get_request(url.format(user_id=user_id, offset=offset))
+                response = self.send_get_request(url)
                 decoded_messages = self.messages_decoder.decode(response.content)
             except requests.RequestException:
                 raise ScrapingException(f'failed to retrieve messages for user {user_id} at offset {offset} with scraper "{self.name}"')
@@ -400,12 +410,12 @@ class OnlyFansScraper:
 
     # def get_purchased_media(self, user_id: int, *, skip_db: bool = False) -> list[NormalizedMedia]:
     #     medias: list[NormalizedMedia] = []
-    #     url = 'https://onlyfans.com/api2/v2/posts/paid?limit=10&offset={offset}'
 
     #     offset = 0
     #     while True:
+    #         url = self.generate_url('api2', 'v2', 'posts', 'paid', limit=10, offset=offset)
     #         try:
-    #             response = self.send_get_request(url.format(offset=offset))
+    #             response = self.send_get_request(url)
     #             decoded_media = self.media_decoder(response.content)
     #         except requests.RequestException:
     #             raise ScrapingException(f'failed to get purchased media at offset {offset} for scraper "{self.name}"')
@@ -425,12 +435,12 @@ class OnlyFansScraper:
                 pass
 
         categories: list[HighlightCategory] = []
-        categories_url = 'https://onlyfans.com/api2/v2/users/{user_id}/stories/highlights?limit=5&offset={offset}'
+
         offset = 0
         while True:
-            formatted_categories_url = categories_url.format(user_id=user_id, offset=offset)
+            categories_url = self.generate_url('api2', 'v2', 'users', user_id, 'stories', 'highlights', limit=5, offset=offset)
             try:
-                response = self.send_get_request(formatted_categories_url)
+                response = self.send_get_request(categories_url)
                 decoded_categories = self.highlight_category_decoder.decode(response.content)
 
             except requests.RequestException:
@@ -443,10 +453,9 @@ class OnlyFansScraper:
             categories += decoded_categories
             offset += 5
 
-        highlights_url = 'https://onlyfans.com/api2/v2/stories/highlights/{id}'
         for category in categories:
-            formatted_highlights_url = highlights_url.format(id=category.id)
-            response = self.send_get_request(formatted_highlights_url)
+            highlights_url = self.generate_url('api2', 'v2', 'stories', 'highlights', category.id)
+            response = self.send_get_request(highlights_url)
             decoded_highlight = self.highlight_decoder.decode(response.content)
             for story in reversed(decoded_highlight.stories):
                 if int(datetime.strptime(story.created_at, '%Y-%m-%dT%H:%M:%S%z').timestamp()) > last_highlight_timestamp:
@@ -480,9 +489,9 @@ class OnlyFansScraper:
                 pass
 
         # TODO: Figure out how they paginate this endpoint.
-        url = 'https://onlyfans.com/api2/v2/users/{user_id}/stories'
+        url = self.generate_url('api2', 'v2', 'users', user_id, 'stories')
         try:
-            response = self.send_get_request(url.format(user_id=user_id))
+            response = self.send_get_request(url)
             decoded_stories = self.stories_decoder.decode(response.content)
         except requests.RequestException:
             raise ScrapingException(f'failed to retrieve stories for user {user.username} with scraper "{self.name}"')
