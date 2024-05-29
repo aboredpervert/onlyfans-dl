@@ -24,7 +24,7 @@ def _x_bc() -> str:
     return ''.join(random.choice(chars) for _ in range(40))
 
 
-class Scraper(msgspec.Struct, omit_defaults=True):
+class Scraper(msgspec.Struct, kw_only=True, omit_defaults=True):
     cookie: str = ''
     user_agent: str = ''
     proxy: str = ''

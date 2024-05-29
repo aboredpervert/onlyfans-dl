@@ -1,7 +1,7 @@
 from msgspec import Struct
 
 
-class HeaderRules(Struct):
+class HeaderRules(Struct, kw_only=True):
 
     static_param: str
     format: str
@@ -10,7 +10,7 @@ class HeaderRules(Struct):
     app_token: str
 
 
-class User(Struct):
+class User(Struct, kw_only=True):
 
     """Useful attributes from the OnlyFans API. Inherits `msgspec.Struct`."""
 
@@ -29,13 +29,13 @@ class User(Struct):
         return self.id == other.id
 
 
-class Post(Struct, rename='camel'):
+class Post(Struct, kw_only=True, rename='camel'):
 
     """Useful attributes from the OnlyFans API. Inherits `msgspec.Struct`."""
 
-    class Media(Struct, rename='camel'):
+    class Media(Struct, kw_only=True, rename='camel'):
 
-        class Source(Struct):
+        class Source(Struct, kw_only=True):
 
             source: str | None
             width: int
@@ -61,7 +61,7 @@ class Post(Struct, rename='camel'):
     preview: list[int | str] | None = None
 
 
-class Posts(Struct, rename={'has_more': 'hasMore', 'posts': 'list'}.get):
+class Posts(Struct, kw_only=True, rename={'has_more': 'hasMore', 'posts': 'list'}.get):
 
     """Useful attributes from the OnlyFans API. Inherits `Struct`."""
 
@@ -69,11 +69,11 @@ class Posts(Struct, rename={'has_more': 'hasMore', 'posts': 'list'}.get):
     has_more: bool
 
 
-class Chats(Struct, rename={'has_more': 'hasMore', 'next_offset': 'nextOffset', 'chats': 'list'}.get):
+class Chats(Struct, kw_only=True, rename={'has_more': 'hasMore', 'next_offset': 'nextOffset', 'chats': 'list'}.get):
 
     """Describes the relevant fields of OnlyFans's chats API response."""
 
-    class Chat(Struct, rename='camel'):
+    class Chat(Struct, kw_only=True, rename='camel'):
 
         with_user: User
 
@@ -82,13 +82,13 @@ class Chats(Struct, rename={'has_more': 'hasMore', 'next_offset': 'nextOffset', 
     next_offset: int
 
 
-class Message(Struct, rename='camel'):
+class Message(Struct, kw_only=True, rename='camel'):
 
-    class Media(Struct, rename='camel'):
+    class Media(Struct, kw_only=True, rename='camel'):
 
-        class Info(Struct):
+        class Info(Struct, kw_only=True):
 
-            class Source(Struct):
+            class Source(Struct, kw_only=True):
 
                 width: int
                 height: int
@@ -111,21 +111,21 @@ class Message(Struct, rename='camel'):
     created_at: str
 
 
-class Messages(Struct, rename={'has_more': 'hasMore', 'messages': 'list'}.get):
+class Messages(Struct, kw_only=True, rename={'has_more': 'hasMore', 'messages': 'list'}.get):
 
     messages: list[Message]
     has_more: bool
 
 
-class Story(Struct, rename='camel'):
+class Story(Struct, kw_only=True, rename='camel'):
 
     '''
     Describes the relevant fields of OnlyFans's story struct.
     '''
 
-    class Media(Struct, rename='camel'):
+    class Media(Struct, kw_only=True, rename='camel'):
 
-        class Source(Struct):
+        class Source(Struct, kw_only=True):
 
             source: str | None
             width: int
@@ -137,9 +137,9 @@ class Story(Struct, rename='camel'):
         can_view: bool
         source: Source
 
-    class Question(Struct):
+    class Question(Struct, kw_only=True):
 
-        class Entity(Struct):
+        class Entity(Struct, kw_only=True):
 
             text: str
 
@@ -152,7 +152,7 @@ class Story(Struct, rename='camel'):
     question: Question | None
 
 
-class HighlightCategory(Struct, rename='camel'):
+class HighlightCategory(Struct, kw_only=True, rename='camel'):
 
     '''
     Describes the relevant fields of OnlyFans's highlight struct.
@@ -165,7 +165,7 @@ class HighlightCategory(Struct, rename='camel'):
     created_at: str
 
 
-class Highlight(Struct, rename='camel'):
+class Highlight(Struct, kw_only=True, rename='camel'):
 
     '''
     Describes the relevant fields of OnlyFans's highlights API response.
@@ -179,7 +179,7 @@ class Highlight(Struct, rename='camel'):
     stories: list[Story]
 
 
-class NormalizedMedia(Struct):
+class NormalizedMedia(Struct, kw_only=True):
     '''Custom normalized media'''
     user_id: int
     source_type: str
