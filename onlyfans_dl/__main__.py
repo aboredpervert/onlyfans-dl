@@ -1,72 +1,60 @@
 import argparse
 import concurrent.futures
-import configparser
 import logging
+import os
 import pathlib
-import random
-import string
-import sys
 import time
+import typing
 
-import platformdirs
 import requests
-from requests.adapters import HTTPAdapter, Retry
 
 from .logging import setup_logging
+from .config import DEFAULT_PATH, build_config
 from .client import OnlyFansScraper, ScrapingException, get_header_rules
 from .client.structs import NormalizedMedia, User
 
 LOGGER = logging.getLogger(__name__)
 
 
+def parse_path(value: str) -> pathlib.Path:
+    return pathlib.Path(os.path.normpath(os.path.abspath(value)))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', '-c', type=pathlib.Path, default=pathlib.Path(platformdirs.user_config_dir('onlyfans_dl'), 'scrapers.conf'))
+    parser.add_argument('--config', '-c', type=parse_path, default=DEFAULT_PATH)
     parser.add_argument('--run-forever', action='store_true')
     parser.add_argument('users', nargs='*')
     return parser.parse_args()
-
-def build_config(config_file: pathlib.Path) -> configparser.ConfigParser:
-    config = configparser.ConfigParser()
-    if config_file.exists():
-        config.read(config_file)
-    else:
-        config_file.parent.mkdir(parents=True, exist_ok=True)
-        scraper_name = input('Enter a name for this scraper: ')
-        config[scraper_name] = {}
-        config[scraper_name]['cookie'] = input('Enter your cookie value: ')
-        config[scraper_name]['user_agent'] = input('Enter your user agent value: ')
-        config[scraper_name]['x_bc'] = input('Enter your x-bc value: ')
-        with open(config_file, 'w') as f:
-            config.write(f)
-        print(f'Config file written: {config_file}')
-        if input('Would you like to begin scraping now? (y/n)') == 'n':
-            sys.exit()
-    return config
 
 
 def configure_clients(args: argparse.Namespace) -> list[OnlyFansScraper]:
     config_path: pathlib.Path = args.config
     config = build_config(config_path)
     clients = []
-    for section in config:
-        if section == 'DEFAULT':
-            continue
+    for scraper_name, scraper in config.items():
         session = requests.Session()
+
         # Configure this session object to retry up to 10 times.
         # https://findwork.dev/blog/advanced-usage-python-requests-timeouts-retries-hooks/#retry-on-failure
-        session.mount('https://', HTTPAdapter(max_retries=Retry(total=10, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])))
-        if 'proxy' in config[section]:
-            session.proxies = {'https': config[section]['proxy']}
+        retry = requests.adapters.Retry(total=10, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
+        typing.cast(requests.adapters.HTTPAdapter, session.get_adapter('http://')).max_retries = retry
+        typing.cast(requests.adapters.HTTPAdapter, session.get_adapter('https://')).max_retries = retry
+
+        if scraper.proxy:
+            session.proxies = { 'all': scraper.proxy }
+            session.trust_env = False
+
         clients.append(OnlyFansScraper(
-            section,
+            scraper_name,
             session=session,
-            header_rules=get_header_rules(session),
-            cookie=config[section].get('cookie', ''),
-            user_agent=config[section].get('user_agent', ''),
-            x_bc=config[section].get('x_bc', ''.join(random.choice(string.digits + string.ascii_lowercase) for _ in range(40))),
-            download_root=config[section].get('download_root', 'downloads'),
-            skip_temporary=config[section].getboolean('skip_temporary', False),
+            header_rules=get_header_rules(session, scraper.rules),
+            cookie=scraper.cookie,
+            user_agent=scraper.user_agent,
+            x_bc=scraper.x_bc,
+            download_root=scraper.download_root,
+            download_template=scraper.download_template,
+            skip_temporary=scraper.skip_temporary,
         ))
     return clients
 

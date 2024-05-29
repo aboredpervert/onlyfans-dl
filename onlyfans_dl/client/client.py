@@ -36,6 +36,12 @@ from .structs import (
 
 LOGGER = logging.getLogger(__name__)
 
+DEFAULT_RULES_URL = 'https://raw.githubusercontent.com/deviint/onlyfans-dynamic-rules/main/dynamicRules.json'
+DEFAULT_DOWNLOAD_ROOT = 'downloads'
+DEFAULT_DOWNLOAD_TEMPLATE = '{date:%Y-%m-%d}.{media_id}.{text:.35}.{extension}'
+DEFAULT_SKIP_TEMPORARY = False
+
+
 def sanitize_filename(file_name: str) -> str:
     '''
     Clean the post text.
@@ -48,7 +54,7 @@ def sanitize_filename(file_name: str) -> str:
     return file_name.lower()
 
 
-def get_header_rules(session: requests.Session, url: str = 'https://raw.githubusercontent.com/deviint/onlyfans-dynamic-rules/main/dynamicRules.json') -> HeaderRules:
+def get_header_rules(session: requests.Session, url: str = DEFAULT_RULES_URL) -> HeaderRules:
     with session.get(url) as response:
         response.raise_for_status()
         return msgspec.json.decode(response.content, type=HeaderRules)
@@ -65,12 +71,12 @@ class OnlyFansScraper:
         session: requests.Session,
         request_timeout: int = 10,
         header_rules: HeaderRules | None = None,
-        cookie: str = '',
-        user_agent: str = '',
+        cookie: str | None = None,
+        user_agent: str | None = None,
         x_bc: str,
-        download_root: str = 'downloads',
-        download_template: str = '{date:%Y-%m-%d}.{media_id}.{text:.35}.{extension}',
-        skip_temporary: bool = False,
+        download_root: str = DEFAULT_DOWNLOAD_ROOT,
+        download_template: str = DEFAULT_DOWNLOAD_TEMPLATE,
+        skip_temporary: bool = DEFAULT_SKIP_TEMPORARY,
     ):
         self.session = session
         self.request_timeout = request_timeout
