@@ -35,6 +35,10 @@ def configure_clients(args: argparse.Namespace, stack: contextlib.ExitStack | No
     clients = []
     for scraper_name, scraper in config.items():
         session = requests.Session()
+        if scraper.user_agent:
+            session.headers['user-agent'] = scraper.user_agent
+        else:
+            del session.headers['user-agent'] # don't default to python-requests/x.x.x
 
         # Configure this session object to retry up to 10 times.
         # https://findwork.dev/blog/advanced-usage-python-requests-timeouts-retries-hooks/#retry-on-failure
