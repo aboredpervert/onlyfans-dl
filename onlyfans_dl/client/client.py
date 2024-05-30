@@ -25,6 +25,7 @@ from .structs import (
     Highlight,
     NormalizedMedia,
     Messages,
+    Pagination,
     Post,
     Story,
     User,
@@ -94,7 +95,7 @@ class OnlyFansScraper:
         # msgspec decoders
         # ref: https://jcristharif.com/msgspec/perf-tips.html#reuse-encoders-decoders
         self.user_decoder = msgspec.json.Decoder(User)
-        self.users_decoder = msgspec.json.Decoder(list[User])
+        self.user_page_decoder = msgspec.json.Decoder(Pagination[User])
         self.posts_decoder = msgspec.json.Decoder(list[Post])
         self.chats_decoder = msgspec.json.Decoder(Chats)
         self.messages_decoder = msgspec.json.Decoder(Messages)
@@ -209,11 +210,12 @@ class OnlyFansScraper:
         subscriptions: list[User] = []
 
         offset = 0
-        while True:
-            url = self.generate_url('api2', 'v2', 'subscriptions', 'subscribes', limit=10, offset=offset, type='active', sort='desc')
+        has_more = True
+        while has_more:
+            url = self.generate_url('api2', 'v2', 'subscriptions', 'subscribes', limit=10, offset=offset, type='active', format='infinite')
             try:
                 response = self.send_get_request(url)
-                users = self.users_decoder.decode(response.content)
+                users = self.user_page_decoder.decode(response.content)
             except requests.RequestException as e:
                 if e.response is None:
                     raise ScrapingException(f'failed to retrieve subscriptions with scraper "{self.name}" at offset {offset}')
@@ -223,11 +225,9 @@ class OnlyFansScraper:
                 LOGGER.debug('get_subscriptions() response.content: %s', response.content)
                 raise ScrapingException(f'failed to deserialize subscriptions with scraper "{self.name}" at offset {offset}')
 
-            if users:
-                subscriptions.extend(users)
-                offset += len(users)
-            else:
-                break
+            subscriptions.extend(users.items)
+            offset += len(users.items)
+            has_more = users.has_more
 
         return subscriptions
 

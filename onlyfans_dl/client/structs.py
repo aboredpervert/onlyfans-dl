@@ -1,3 +1,5 @@
+import typing
+
 from msgspec import Struct, UnsetType, UNSET, field
 
 
@@ -171,6 +173,12 @@ class Highlight(Struct, kw_only=True, rename='camel'):
     cover: str
     created_at: str
     stories: list[Story]
+
+
+T = typing.TypeVar('T')
+class Pagination(Struct, typing.Generic[T], kw_only=True):
+    items: list[T] = field(default_factory=list, name='list')
+    has_more: bool = field(default=False, name='hasMore')
 
 
 class NormalizedMedia(Struct, kw_only=True):
