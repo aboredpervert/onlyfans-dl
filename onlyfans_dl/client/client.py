@@ -81,6 +81,7 @@ class ScrapingException(Exception):
     pass
 
 
+T = typing.TypeVar('T')
 class OnlyFansScraper:
     def __init__(self,
         name: str = __qualname__,
@@ -175,25 +176,31 @@ class OnlyFansScraper:
             headers['user-agent'] = self.user_agent
         return headers
 
-    def send_get_request(self, url: str, output_file: str = '') -> requests.Response:
-        '''Sends a request to a URL with OnlyFans headers.
+    def send_api_request(self, url: str, decoder: msgspec.json.Decoder[T]) -> T:
+        '''Sends a request to a URL with OnlyFans headers, and parses the response.
 
         Args:
             `url`: The URL to be requested.
-            `output_file`: The file to save the response to.
+            `decoder`: Decoder to use for the response.
 
         Returns:
-            A Response object containing the response details.
+            The decoded object.
 
         Raises:
-            `requests.RequestException`: An error occurred while sending the request.
+            `ScrapingException`: The request or decoding failed.
         '''
-        with self.session.get(url, headers=self.generate_headers(url), timeout=self.request_timeout) as response:
-            response.raise_for_status()
-            if output_file:
-                with open(output_file, 'wb') as f:
-                    f.write(response.content)
-            return response
+        url_path = urllib.parse.urlsplit(url).path
+        LOGGER.debug('sending API request to %s', url_path)
+
+        try:
+            with self.session.get(url, headers=self.generate_headers(url), timeout=self.request_timeout) as response:
+                response.raise_for_status()
+                return decoder.decode(response.content)
+        except requests.RequestException as e:
+            raise ScrapingException(f'failed to send API request to {url_path}') from e
+        except msgspec.DecodeError as e:
+            LOGGER.debug('recevived unparseable response from %s: %r', url_path, response.content)
+            raise ScrapingException(f'failed to parse API response from {url_path} of type {decoder.type.__name__}') from e
 
     @functools.cache
     def get_user_details(self, user: int | str) -> User:
@@ -209,14 +216,7 @@ class OnlyFansScraper:
             `ScrapingException`: An error occurred while retrieving or deserializing the user's details.
         '''
         url = self.generate_url('api2', 'v2', 'users', user)
-        try:
-            response = self.send_get_request(url)
-            return self.user_decoder.decode(response.content)
-        except requests.RequestException:
-            raise ScrapingException('failed to retrieve user details for %s' % user)
-        except msgspec.DecodeError:
-            LOGGER.debug('get_user_details(%s) response.content: %s', user, response.content)
-            raise ScrapingException('failed to deserialize user details for %s' % user)
+        return self.send_api_request(url, self.user_decoder)
 
     def get_users_details(self, *user: int) -> dict[int, User]:
         '''Retrieves the details of multiple users at once.
@@ -232,15 +232,9 @@ class OnlyFansScraper:
         '''
         if not user:
             return {}
+
         url = self.generate_url_ex(('api2', 'v2', 'users', 'list'), [('x[]', x) for x in user])
-        try:
-            response = self.send_get_request(url)
-            return self.user_dict_decoder.decode(response.content)
-        except requests.RequestException:
-            raise ScrapingException('failed to retrieve user details for %s' % ', '.join(map(str, user)))
-        except msgspec.DecodeError:
-            LOGGER.debug('get_users_details(%s) response.content: %s', user, response.content)
-            raise ScrapingException('failed to deserialize user details for %s' % ', '.join(map(str, user)))
+        return self.send_api_request(url, self.user_dict_decoder)
 
     def get_subscriptions(self) -> list[User]:
         '''Retrieves all active subscriptions.
@@ -257,17 +251,7 @@ class OnlyFansScraper:
         has_more = True
         while has_more:
             url = self.generate_url('api2', 'v2', 'subscriptions', 'subscribes', limit=10, offset=offset, type='active', format='infinite')
-            try:
-                response = self.send_get_request(url)
-                users = self.user_page_decoder.decode(response.content)
-            except requests.RequestException as e:
-                if e.response is None:
-                    raise ScrapingException(f'failed to retrieve subscriptions with scraper "{self.name}" at offset {offset}')
-                else:
-                    raise ScrapingException(f'failed to retrieve subscriptions with scraper "{self.name}" at offset {offset} - status {e.response.status_code}')
-            except msgspec.DecodeError:
-                LOGGER.debug('get_subscriptions() response.content: %s', response.content)
-                raise ScrapingException(f'failed to deserialize subscriptions with scraper "{self.name}" at offset {offset}')
+            users = self.send_api_request(url, self.user_page_decoder)
 
             subscriptions.extend(users.items)
             offset += len(users.items)
@@ -301,15 +285,7 @@ class OnlyFansScraper:
         offset = 0
         while True:
             url = self.generate_url('api2', 'v2', 'users', user_id, 'posts', limit=10, offset=offset, order='publish_date_desc')
-            try:
-                response = self.send_get_request(url)
-                decoded_posts = self.posts_decoder.decode(response.content)
-            except requests.RequestException:
-                raise ScrapingException(f'failed to retrieve posts for user {user_id} at offset {offset} with scraper "{self.name}"')
-            except msgspec.DecodeError:
-                with open(f'decoding_error-{int(time.time())}.json', 'w') as f:
-                    f.write(response.text)
-                raise ScrapingException(f'failed to deserialize posts for user {user_id} at offset {offset} with scraper "{self.name}"')
+            decoded_posts = self.send_api_request(url, self.posts_decoder)
 
             if not decoded_posts:
                 break
@@ -352,15 +328,7 @@ class OnlyFansScraper:
         offset = 0
         while True:
             url = self.generate_url('api2', 'v2', 'users', user_id, 'posts', 'archived', limit=10, offset=offset, order='publish_date_desc')
-            try:
-                response = self.send_get_request(url)
-                decoded_posts = self.posts_decoder.decode(response.content)
-            except requests.RequestException:
-                raise ScrapingException(f'failed to retrieve archived posts for user {user_id} at offset {offset} with scraper "{self.name}"')
-            except msgspec.DecodeError:
-                with open(f'decoding_error-{int(time.time())}.json', 'w') as f:
-                    f.write(response.text)
-                raise ScrapingException(f'failed to deserialize archived posts for user {user_id} at offset {offset} with scraper "{self.name}"')
+            decoded_posts = self.send_api_request(url, self.posts_decoder)
 
             if not decoded_posts:
                 break
@@ -391,15 +359,7 @@ class OnlyFansScraper:
         has_more = True
         while has_more:
             url = self.generate_url('api2', 'v2', 'chats', limit=10, offset=offset, skip_users='all', order='recent')
-            try:
-                response = self.send_get_request(url)
-                decoded_chats = self.chat_page_decoder.decode(response.content)
-            except requests.RequestException:
-                raise ScrapingException(f'failed to retrieve chats with scraper "{self.name}" at offset {offset}')
-            except msgspec.DecodeError:
-                with open(f'decoding_error-{int(time.time())}.json', 'w') as f:
-                    f.write(response.text)
-                raise ScrapingException(f'failed to deserialize chats with scraper "{self.name}" at offset {offset}')
+            decoded_chats = self.send_api_request(url, self.chat_page_decoder)
 
             chats.extend(self.get_users_details(*(chat.with_user.id for chat in decoded_chats.items)).values())
             offset = decoded_chats.next_offset
@@ -433,15 +393,7 @@ class OnlyFansScraper:
         offset = 0
         while True:
             url = self.generate_url('api2', 'v2', 'chats', user_id, 'messages', limit=10, offset=offset, order='desc')
-            try:
-                response = self.send_get_request(url)
-                decoded_messages = self.messages_decoder.decode(response.content)
-            except requests.RequestException:
-                raise ScrapingException(f'failed to retrieve messages for user {user_id} at offset {offset} with scraper "{self.name}"')
-            except msgspec.DecodeError:
-                with open(f'decoding_error-{int(time.time())}.json', 'w') as f:
-                    f.write(response.text)
-                raise ScrapingException(f'failed to deserialize messages for user {user_id} at offset {offset} with scraper "{self.name}"')
+            decoded_messages = self.send_api_request(url, self.messages_decoder)
 
             for message in decoded_messages.messages:
                 if int(datetime.strptime(message.created_at, '%Y-%m-%dT%H:%M:%S%z').timestamp()) > last_message_timestamp:
@@ -460,13 +412,7 @@ class OnlyFansScraper:
     #     offset = 0
     #     while True:
     #         url = self.generate_url('api2', 'v2', 'posts', 'paid', limit=10, offset=offset)
-    #         try:
-    #             response = self.send_get_request(url)
-    #             decoded_media = self.media_decoder(response.content)
-    #         except requests.RequestException:
-    #             raise ScrapingException(f'failed to get purchased media at offset {offset} for scraper "{self.name}"')
-    #         except msgspec.DecodeError:
-    #             raise ScrapingException(f'failed to deserialize purchased media at offset {offset} with scraper "{self.name}"')
+    #         decoded_media = self.send_api_request(url, self.media_decoder)
 
     def get_highlight_media_by_id(self, user_id: int, *, skip_db: bool = False) -> list[NormalizedMedia]:
         user = self.get_user_details(user_id)
@@ -485,14 +431,7 @@ class OnlyFansScraper:
         offset = 0
         while True:
             categories_url = self.generate_url('api2', 'v2', 'users', user_id, 'stories', 'highlights', limit=5, offset=offset)
-            try:
-                response = self.send_get_request(categories_url)
-                decoded_categories = self.highlight_category_decoder.decode(response.content)
-
-            except requests.RequestException:
-                raise ScrapingException(f'failed to retrieve highlights for user {user_id} with scraper "{self.name}"')
-            except msgspec.DecodeError:
-                raise ScrapingException(f'failed to deserialize highlights for user {user_id} with scraper "{self.name}"')
+            decoded_categories = self.send_api_request(categories_url, self.highlight_category_decoder)
 
             if not decoded_categories:
                 break
@@ -501,8 +440,7 @@ class OnlyFansScraper:
 
         for category in categories:
             highlights_url = self.generate_url('api2', 'v2', 'stories', 'highlights', category.id)
-            response = self.send_get_request(highlights_url)
-            decoded_highlight = self.highlight_decoder.decode(response.content)
+            decoded_highlight = self.send_api_request(highlights_url, self.highlight_decoder)
             for story in reversed(decoded_highlight.stories):
                 if int(datetime.strptime(story.created_at, '%Y-%m-%dT%H:%M:%S%z').timestamp()) > last_highlight_timestamp:
                     user_medias += normalize_story_media(story, highlight_category=category.title)
@@ -536,13 +474,7 @@ class OnlyFansScraper:
 
         # TODO: Figure out how they paginate this endpoint.
         url = self.generate_url('api2', 'v2', 'users', user_id, 'stories')
-        try:
-            response = self.send_get_request(url)
-            decoded_stories = self.stories_decoder.decode(response.content)
-        except requests.RequestException:
-            raise ScrapingException(f'failed to retrieve stories for user {user.username} with scraper "{self.name}"')
-        except msgspec.DecodeError:
-            raise ScrapingException(f'failed to deserialize stories for user {user.username} with scraper "{self.name}"')
+        decoded_stories = self.send_api_request(url, self.stories_decoder)
 
         for story in reversed(decoded_stories):
             if int(datetime.strptime(story.created_at, '%Y-%m-%dT%H:%M:%S%z').timestamp()) > last_story_timestamp:
@@ -577,39 +509,41 @@ class OnlyFansScraper:
 
             if user.avatar:
                 try:
-                    response = self.session.get(user.avatar)
-                    response.raise_for_status()
-                    timestamp = int(datetime.strptime(response.headers['last-modified'], '%a, %d %b %Y %X GMT').timestamp())
-                    dest_file = pathlib.Path(user_dir, 'avatar.jpg')
-                    if not cur.execute('SELECT * FROM media WHERE source_type = ? AND source_id = ? AND media_id = ?', ('avatar', timestamp, timestamp)).fetchone():
-                        if existing_avatars := cur.execute('SELECT * FROM media WHERE source_type = ?', ('avatar',)).fetchall():
-                            current_avatar_timestamp: int = max(existing_avatars, key=itemgetter(1))[1]
-                            old_avatar_file = pathlib.Path(dest_file.parent, f'avatar-{current_avatar_timestamp}.jpg')
-                            dest_file.rename(old_avatar_file)
-                        temp_file = pathlib.Path(dest_file.parent, f'{dest_file.name}.{secrets.token_urlsafe(6)}.part')
-                        with temp_file.open('wb') as f:
-                            f.write(response.content)
-                        temp_file.rename(dest_file)
-                        cur.execute('INSERT INTO media VALUES (?, ?, ?, ?)', ('avatar', timestamp, timestamp, timestamp))
+                    with self.session.get(user.avatar, stream=True, timeout=self.request_timeout) as response:
+                        response.raise_for_status()
+                        timestamp = int(datetime.strptime(response.headers['last-modified'], '%a, %d %b %Y %X GMT').timestamp())
+                        dest_file = pathlib.Path(user_dir, 'avatar.jpg')
+                        if not cur.execute('SELECT * FROM media WHERE source_type = ? AND source_id = ? AND media_id = ?', ('avatar', timestamp, timestamp)).fetchone():
+                            if existing_avatars := cur.execute('SELECT * FROM media WHERE source_type = ?', ('avatar',)).fetchall():
+                                current_avatar_timestamp: int = max(existing_avatars, key=itemgetter(1))[1]
+                                old_avatar_file = pathlib.Path(dest_file.parent, f'avatar-{current_avatar_timestamp}.jpg')
+                                dest_file.rename(old_avatar_file)
+                            temp_file = pathlib.Path(dest_file.parent, f'{dest_file.name}.{secrets.token_urlsafe(6)}.part')
+                            with temp_file.open('wb') as f:
+                                for chunk in response.iter_content(requests.models.CONTENT_CHUNK_SIZE):
+                                    f.write(chunk)
+                            temp_file.rename(dest_file)
+                            cur.execute('INSERT INTO media VALUES (?, ?, ?, ?)', ('avatar', timestamp, timestamp, timestamp))
                 except requests.RequestException:
                     LOGGER.exception('error getting avatar')
 
             if user.header:
                 try:
-                    response = self.session.get(user.header)
-                    response.raise_for_status()
-                    timestamp = int(datetime.strptime(response.headers['last-modified'], '%a, %d %b %Y %X GMT').timestamp())
-                    dest_file = pathlib.Path(user_dir, 'header.jpg')
-                    if not cur.execute('SELECT * FROM media WHERE source_type = ? AND source_id = ? AND media_id = ?', ('header', timestamp, timestamp)).fetchone():
-                        if existing_headers := cur.execute('SELECT * FROM media WHERE source_type = ?', ('header',)).fetchall():
-                            current_header_timestamp: int = max(existing_headers, key=itemgetter(1))[1]
-                            old_header_file = pathlib.Path(dest_file.parent, f'header-{current_header_timestamp}.jpg')
-                            dest_file.rename(old_header_file)
-                        temp_file = pathlib.Path(dest_file.parent, f'{dest_file.name}.{secrets.token_urlsafe(6)}.part')
-                        with temp_file.open('wb') as f:
-                            f.write(response.content)
-                        temp_file.rename(dest_file)
-                        cur.execute('INSERT INTO media VALUES (?, ?, ?, ?)', ('header', timestamp, timestamp, timestamp))
+                    with self.session.get(user.header, stream=True, timeout=self.request_timeout) as response:
+                        response.raise_for_status()
+                        timestamp = int(datetime.strptime(response.headers['last-modified'], '%a, %d %b %Y %X GMT').timestamp())
+                        dest_file = pathlib.Path(user_dir, 'header.jpg')
+                        if not cur.execute('SELECT * FROM media WHERE source_type = ? AND source_id = ? AND media_id = ?', ('header', timestamp, timestamp)).fetchone():
+                            if existing_headers := cur.execute('SELECT * FROM media WHERE source_type = ?', ('header',)).fetchall():
+                                current_header_timestamp: int = max(existing_headers, key=itemgetter(1))[1]
+                                old_header_file = pathlib.Path(dest_file.parent, f'header-{current_header_timestamp}.jpg')
+                                dest_file.rename(old_header_file)
+                            temp_file = pathlib.Path(dest_file.parent, f'{dest_file.name}.{secrets.token_urlsafe(6)}.part')
+                            with temp_file.open('wb') as f:
+                                for chunk in response.iter_content(requests.models.CONTENT_CHUNK_SIZE):
+                                    f.write(chunk)
+                            temp_file.rename(dest_file)
+                            cur.execute('INSERT INTO media VALUES (?, ?, ?, ?)', ('header', timestamp, timestamp, timestamp))
                 except requests.RequestException:
                     LOGGER.exception('error getting header')
 
@@ -650,16 +584,16 @@ class OnlyFansScraper:
                 dest_file.parent.mkdir(parents=True, exist_ok=True)
                 temp_file = pathlib.Path(dest_file.parent, f'{dest_file.name}.{secrets.token_urlsafe(6)}.part')
                 try:
-                    response = self.session.get(media.url, stream=True, timeout=10)
-                    if dest_file.exists() and dest_file.stat().st_size == int(response.headers.get('content-length', '0')):
+                    with self.session.get(media.url, stream=True, timeout=self.request_timeout) as response:
+                        response.raise_for_status()
+                        if dest_file.exists() and dest_file.stat().st_size == int(response.headers.get('content-length', '0')):
+                            cur.execute('INSERT INTO media VALUES (?, ?, ?, ?)', (media.source_type, int(creation_date.timestamp()), media.source_id, media.id))
+                            continue
+                        with open(temp_file, 'wb') as f:
+                            for chunk in response.iter_content(requests.models.CONTENT_CHUNK_SIZE):
+                                f.write(chunk)
+                        temp_file.rename(dest_file)
                         cur.execute('INSERT INTO media VALUES (?, ?, ?, ?)', (media.source_type, int(creation_date.timestamp()), media.source_id, media.id))
-                        continue
-                    response.raise_for_status()
-                    with open(temp_file, 'wb') as f:
-                        for chunk in response.iter_content(requests.models.CONTENT_CHUNK_SIZE):
-                            f.write(chunk)
-                    temp_file.rename(dest_file)
-                    cur.execute('INSERT INTO media VALUES (?, ?, ?, ?)', (media.source_type, int(creation_date.timestamp()), media.source_id, media.id))
                 except requests.RequestException:
                     LOGGER.exception('error getting media')
             database.commit()
