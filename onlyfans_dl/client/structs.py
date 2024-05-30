@@ -65,17 +65,8 @@ class Posts(Struct, kw_only=True, rename={'has_more': 'hasMore', 'posts': 'list'
     has_more: bool
 
 
-class Chats(Struct, kw_only=True, rename={'has_more': 'hasMore', 'next_offset': 'nextOffset', 'chats': 'list'}.get):
-
-    """Describes the relevant fields of OnlyFans's chats API response."""
-
-    class Chat(Struct, kw_only=True, rename='camel'):
-
-        with_user: UserRef
-
-    chats: list[Chat]
-    has_more: bool
-    next_offset: int
+class Chat(Struct, kw_only=True, rename='camel'):
+    with_user: UserRef
 
 
 class Message(Struct, kw_only=True, rename='camel'):
@@ -179,6 +170,10 @@ T = typing.TypeVar('T')
 class Pagination(Struct, typing.Generic[T], kw_only=True):
     items: list[T] = field(default_factory=list, name='list')
     has_more: bool = field(default=False, name='hasMore')
+
+
+class NextOffsetPagination(Pagination[T], kw_only=True):
+    next_offset: int = field(default=False, name='nextOffset')
 
 
 class NormalizedMedia(Struct, kw_only=True):

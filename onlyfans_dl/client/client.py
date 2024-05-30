@@ -19,12 +19,13 @@ import msgspec
 import requests
 
 from .structs import (
-    Chats,
+    Chat,
     HeaderRules,
     HighlightCategory,
     Highlight,
     NormalizedMedia,
     Messages,
+    NextOffsetPagination,
     Pagination,
     Post,
     Story,
@@ -97,7 +98,7 @@ class OnlyFansScraper:
         self.user_decoder = msgspec.json.Decoder(User)
         self.user_page_decoder = msgspec.json.Decoder(Pagination[User])
         self.posts_decoder = msgspec.json.Decoder(list[Post])
-        self.chats_decoder = msgspec.json.Decoder(Chats)
+        self.chat_page_decoder = msgspec.json.Decoder(NextOffsetPagination[Chat])
         self.messages_decoder = msgspec.json.Decoder(Messages)
         self.highlight_category_decoder = msgspec.json.Decoder(list[HighlightCategory])
         self.highlight_decoder = msgspec.json.Decoder(Highlight)
@@ -344,11 +345,12 @@ class OnlyFansScraper:
         chats: list[User] = []
 
         offset = 0
-        while True:
-            url = self.generate_url('api2', 'v2', 'chats', offset=offset)
+        has_more = True
+        while has_more:
+            url = self.generate_url('api2', 'v2', 'chats', limit=10, offset=offset, skip_users='all', order='recent')
             try:
                 response = self.send_get_request(url)
-                decoded_chats = self.chats_decoder.decode(response.content)
+                decoded_chats = self.chat_page_decoder.decode(response.content)
             except requests.RequestException:
                 raise ScrapingException(f'failed to retrieve chats with scraper "{self.name}" at offset {offset}')
             except msgspec.DecodeError:
@@ -356,10 +358,11 @@ class OnlyFansScraper:
                     f.write(response.text)
                 raise ScrapingException(f'failed to deserialize chats with scraper "{self.name}" at offset {offset}')
 
-            chats += [self.get_user_details(chat.with_user.id) for chat in decoded_chats.chats]
-            if not decoded_chats.has_more:
-                return chats
+            chats += [self.get_user_details(chat.with_user.id) for chat in decoded_chats.items]
             offset = decoded_chats.next_offset
+            has_more = decoded_chats.has_more
+
+        return chats
 
     def get_message_media_by_id(self, user_id: int, *, skip_db: bool = False) -> list[NormalizedMedia]:
         '''Retrieves all messages with viewable media from a user.
