@@ -63,6 +63,20 @@ def get_header_rules(session: requests.Session, url: str = DEFAULT_RULES_URL) ->
         return msgspec.json.decode(response.content, type=HeaderRules)
 
 
+Primitive = str | int | float | bool | None
+def stringize(value: Primitive) -> str:
+    if value is None:
+        return ''
+    elif isinstance(value, bool):
+        return str(value).lower()
+    else:
+        return str(value)
+
+
+def stringize_quote(value: Primitive) -> str:
+    return urllib.parse.quote(stringize(value), safe='')
+
+
 class ScrapingException(Exception):
     pass
 
@@ -96,6 +110,7 @@ class OnlyFansScraper:
         # msgspec decoders
         # ref: https://jcristharif.com/msgspec/perf-tips.html#reuse-encoders-decoders
         self.user_decoder = msgspec.json.Decoder(User)
+        self.user_dict_decoder = msgspec.json.Decoder(dict[int, User])
         self.user_page_decoder = msgspec.json.Decoder(Pagination[User])
         self.posts_decoder = msgspec.json.Decoder(list[Post])
         self.chat_page_decoder = msgspec.json.Decoder(NextOffsetPagination[Chat])
@@ -111,11 +126,15 @@ class OnlyFansScraper:
         return f'{self.name}\ncookie: {self.cookie}\nuser-agent: {self.user_agent}\nx-bc: {self.x_bc}'
 
     @classmethod
-    def generate_url(cls, *args: str | int | float, **kwargs: str | int | float) -> str:
+    def generate_url(cls, *args: Primitive, **kwargs: Primitive) -> str:
+        return cls.generate_url_ex(args, kwargs.items())
+
+    @classmethod
+    def generate_url_ex(cls, parts: typing.Iterable[Primitive] = (), params: typing.Iterable[tuple[str, Primitive]] = ()) -> str:
         scheme = 'https'
         netloc = 'onlyfans.com'
-        path = '/' + '/'.join(urllib.parse.quote(str(x), safe='') for x in args)
-        query = urllib.parse.urlencode({k: str(v) for k, v in kwargs.items()})
+        path = '/' + '/'.join(map(stringize_quote, parts))
+        query = urllib.parse.urlencode([(k, stringize(v)) for (k, v) in params])
         fragment = ''
         return urllib.parse.urlunsplit((scheme, netloc, path, query, fragment))
 
@@ -198,6 +217,30 @@ class OnlyFansScraper:
         except msgspec.DecodeError:
             LOGGER.debug('get_user_details(%s) response.content: %s', user, response.content)
             raise ScrapingException('failed to deserialize user details for %s' % user)
+
+    def get_users_details(self, *user: int) -> dict[int, User]:
+        '''Retrieves the details of multiple users at once.
+
+        Args:
+            `user`: The users' IDs.
+
+        Returns:
+            A dictionary of IDs to `User` objects describing the specified users.
+
+        Raises:
+            `ScrapingException`: An error occurred while retrieving or deserializing the users' details.
+        '''
+        if not user:
+            return {}
+        url = self.generate_url_ex(('api2', 'v2', 'users', 'list'), [('x[]', x) for x in user])
+        try:
+            response = self.send_get_request(url)
+            return self.user_dict_decoder.decode(response.content)
+        except requests.RequestException:
+            raise ScrapingException('failed to retrieve user details for %s' % ', '.join(map(str, user)))
+        except msgspec.DecodeError:
+            LOGGER.debug('get_users_details(%s) response.content: %s', user, response.content)
+            raise ScrapingException('failed to deserialize user details for %s' % ', '.join(map(str, user)))
 
     def get_subscriptions(self) -> list[User]:
         '''Retrieves all active subscriptions.
@@ -358,7 +401,7 @@ class OnlyFansScraper:
                     f.write(response.text)
                 raise ScrapingException(f'failed to deserialize chats with scraper "{self.name}" at offset {offset}')
 
-            chats += [self.get_user_details(chat.with_user.id) for chat in decoded_chats.items]
+            chats.extend(self.get_users_details(*(chat.with_user.id for chat in decoded_chats.items)).values())
             offset = decoded_chats.next_offset
             has_more = decoded_chats.has_more
 
